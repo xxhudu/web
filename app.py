@@ -1,11 +1,15 @@
-from urllib.parse import parse_qs
+import webob
 
 
 def application(environ: dict, start_response):
-    params = parse_qs(environ['QUERY_STRING'])
-    name = params.get('name', ['anonymous'])[0]
-    start_response('200 OK', [('Content-Type', 'text/plain')]) # headers
-    return ["hello {}".format(name).encode()] # body
+    request = webob.Request(environ)
+    name = request.params.get("name", 'anonymous')
+
+    response = webob.Response()
+    response.text = 'hello {}'.format(name)
+    response.status_code = 200
+    response.content_type = 'text/plain'
+    return response(environ, start_response)
 
 if __name__ == '__main__':
     from wsgiref.simple_server import make_server
