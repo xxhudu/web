@@ -1,12 +1,11 @@
-import os
+from urllib.parse import parse_qs
 
 
 def application(environ: dict, start_response):
-    for k, v in environ.items():
-        if k not in os.environ.keys():
-            print("{} => {}".format(k, v))
+    params = parse_qs(environ['QUERY_STRING'])
+    name = params.get('name', ['anonymous'])[0]
     start_response('200 OK', [('Content-Type', 'text/plain')]) # headers
-    return ["hello world".encode()] # body
+    return ["hello {}".format(name).encode()] # body
 
 if __name__ == '__main__':
     from wsgiref.simple_server import make_server
