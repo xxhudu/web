@@ -1,5 +1,10 @@
-def application(environ, start_response):
-    # biz
+import os
+
+
+def application(environ: dict, start_response):
+    for k, v in environ.items():
+        if k not in os.environ.keys():
+            print("{} => {}".format(k, v))
     start_response('200 OK', [('Content-Type', 'text/plain')]) # headers
     return ["hello world".encode()] # body
 
