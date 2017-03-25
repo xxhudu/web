@@ -27,15 +27,44 @@ class Application:
     ROUTER = []
 
     @classmethod
-    def register(cls, pattern):
+    def route(cls, methods=None, pattern='.*'):
         def wrap(handler):
-            cls.ROUTER.append((re.compile(pattern), handler))
+            cls.ROUTER.append((methods, re.compile(pattern), handler))
             return handler
         return wrap
 
+    @classmethod
+    def get(cls, pattern):
+        return cls.route('GET', pattern)
+
+    @classmethod
+    def put(cls, pattern):
+        return cls.route('PUT', pattern)
+
+    @classmethod
+    def post(cls, pattern):
+        return cls.route('POST', pattern)
+
+    @classmethod
+    def delete(cls, pattern):
+        return cls.route('DELETE', pattern)
+
+    @classmethod
+    def head(cls, pattern):
+        return cls.route('HEAD', pattern)
+
+    @classmethod
+    def options(cls, pattern):
+        return cls.route('OPTIONS', pattern)
+
     @wsgify
     def __call__(self, request: Request) -> Response:
-        for pattern, handler in self.ROUTER:
+        for methods, pattern, handler in self.ROUTER:
+            if methods:
+                if isinstance(methods, (list, tuple, set)) and request.method not in methods:
+                    continue
+                if isinstance(methods, str) and methods != request.method:
+                    continue
             m = pattern.match(request.path)
             if m:
                 request.args = m.groups()
@@ -44,7 +73,7 @@ class Application:
         raise exc.HTTPNotFound('not found')
 
 
-@Application.register('^/hello/(?P<name>\w+)$')
+@Application.get('^/hello/(?P<name>\w+)$')
 def hello(request: Request) -> Response:
     # name = request.params.get("name", 'anonymous')
     name = request.kwargs.name
@@ -55,7 +84,7 @@ def hello(request: Request) -> Response:
     return response
 
 
-@Application.register('^/$')
+@Application.route(methods=('GET', 'PUT'), pattern='^/$')
 def index(request: Request) -> Response:
     return Response(body='hello world', content_type='text/plain')
 
