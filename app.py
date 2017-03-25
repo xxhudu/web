@@ -1,17 +1,29 @@
-import webob
+from webob import Request, Response
 from webob.dec import wsgify
 
 
+def hello(request: Request) -> Response:
+    name = request.params.get("name", 'anonymous')
+    response = Response()
+    response.text = 'hello {}'.format(name)
+    response.status_code = 200
+    response.content_type = 'text/plain'
+    return response
+
+
+def index(request: Request) -> Response:
+    return Response(body='hello world', content_type='text/plain')
+
+
+router = {
+    '/hello': hello,
+    '/': index
+}
+
+
 @wsgify
-def application(request: webob.Request) -> webob.Response:
-    if request.path == '/hello':
-        name = request.params.get("name", 'anonymous')
-        response = webob.Response()
-        response.text = 'hello {}'.format(name)
-        response.status_code = 200
-        response.content_type = 'text/plain'
-        return response
-    return webob.Response(body='hello world', content_type='text/plain')
+def application(request: Request) -> Response:
+    return router.get(request.path, index)(request)
 
 if __name__ == '__main__':
     from wsgiref.simple_server import make_server
