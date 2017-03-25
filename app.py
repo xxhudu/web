@@ -23,70 +23,85 @@ class _Vars:
         self.__dict__['_data'] = value
 
 
-class Application:
-    ROUTER = []
+class Router:
+    def __init__(self, prefix=''):
+        self.__prefix = prefix.rstrip('/')
+        self._routes = []
 
-    @classmethod
-    def route(cls, methods=None, pattern='.*'):
+    @property
+    def prefix(self):
+        return self.__prefix
+
+    def route(self, pattern='.*', methods=None):
         def wrap(handler):
-            cls.ROUTER.append((methods, re.compile(pattern), handler))
+            self._routes.append((methods, re.compile(pattern), handler))
             return handler
         return wrap
 
-    @classmethod
-    def get(cls, pattern):
-        return cls.route('GET', pattern)
+    def get(self, pattern='.*'):
+        return self.route(pattern, 'GET')
 
-    @classmethod
-    def put(cls, pattern):
-        return cls.route('PUT', pattern)
+    def put(self, pattern='.*'):
+        return self.route(pattern, 'PUT')
 
-    @classmethod
-    def post(cls, pattern):
-        return cls.route('POST', pattern)
+    def post(self, pattern='.*'):
+        return self.route(pattern, 'POST')
 
-    @classmethod
-    def delete(cls, pattern):
-        return cls.route('DELETE', pattern)
+    def delete(self, pattern='.*'):
+        return self.route(pattern, 'DELETE')
 
-    @classmethod
-    def head(cls, pattern):
-        return cls.route('HEAD', pattern)
+    def patch(self, pattern='.*'):
+        return self.route(pattern, 'PATCH')
 
-    @classmethod
-    def options(cls, pattern):
-        return cls.route('OPTIONS', pattern)
+    def head(self, pattern='.*'):
+        return self.route(pattern, 'HEAD')
 
-    @wsgify
-    def __call__(self, request: Request) -> Response:
-        for methods, pattern, handler in self.ROUTER:
+    def options(self, pattern='.*'):
+        return self.route(pattern, 'OPTIONS')
+
+    def run(self, request: Request):
+        if not request.path.startswith(self.prefix):
+            return
+        for methods, pattern, handler in self._routes:
             if methods:
                 if isinstance(methods, (list, tuple, set)) and request.method not in methods:
                     continue
                 if isinstance(methods, str) and methods != request.method:
                     continue
-            m = pattern.match(request.path)
+            m = pattern.match(request.path.replace(self.prefix, '', 1))
             if m:
                 request.args = m.groups()
                 request.kwargs = _Vars(m.groupdict())
                 return handler(request)
+
+
+class Application:
+    ROUTERS = []
+
+    @classmethod
+    def register(cls, router: Router):
+        cls.ROUTERS.append(router)
+
+    @wsgify
+    def __call__(self, request: Request) -> Response:
+        for router in self.ROUTERS:
+            response = router.run(request)
+            if response:
+                return response
         raise exc.HTTPNotFound('not found')
 
 
-@Application.get('^/hello/(?P<name>\w+)$')
-def hello(request: Request) -> Response:
-    # name = request.params.get("name", 'anonymous')
-    name = request.kwargs.name
-    response = Response()
-    response.text = 'hello {}'.format(name)
-    response.status_code = 200
-    response.content_type = 'text/plain'
-    return response
+shop = Router('/shop')
 
 
-@Application.route(methods=('GET', 'PUT'), pattern='^/$')
-def index(request: Request) -> Response:
-    return Response(body='hello world', content_type='text/plain')
+@shop.get(r'^/(?P<id>\d+)$')
+def get_product(request: Request):
+    print(request.kwargs.id)
+    return Response(body='product {}'.format(request.kwargs.id), content_type='text/plain')
+
+
+Application.register(router=shop)
+
 
 if __name__ == '__main__':
     from wsgiref.simple_server import make_server
@@ -103,3 +118,6 @@ if __name__ == '__main__':
 # /hello/(\w+)  request.args[0]
 # /hello/(?P<name>\w+)  request.kwargs.name
 # @get('/hello/(?P<name>\w+)')
+
+# shop = Router('/shop')
+# shop.get('/(?P<id>\d+)') = /shop/12345
