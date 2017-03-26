@@ -71,6 +71,8 @@ class Router:
     def __init__(self, prefix=''):
         self.__prefix = prefix.rstrip('/')
         self._routes = []
+        self.before_filters = []
+        self.after_filters = []
 
     @property
     def prefix(self):
@@ -80,7 +82,7 @@ class Router:
         pattern = ['^']
         spec = []
         translator = {}
-        # /home/{name:str}/{id:int}
+        # /home/{name:str}/{id:int}   ^/home/(?P<name>[^/]+)/(?P<id>[+-]?\d+)$
         is_spec = False
         for c in rule:
             if c == '{':
@@ -136,27 +138,55 @@ class Router:
     def options(self, pattern='.*'):
         return self.route(pattern, 'OPTIONS')
 
+    def before_request(self, fn):
+        self.before_filters.append(fn)
+        return fn
+
+    def after_request(self, fn):
+        self.after_filters.append(fn)
+        return
+
     def run(self, request: Request):
         if not request.path.startswith(self.prefix):
             return
+        for fn in self.before_filters:
+            request = fn(self, request)
         for route in self._routes:
             res = route.run(self.prefix, request)
             if res:
+                for fn in self.after_filters:
+                    res = fn(self, request, res)
                 return res
 
 
 class Application:
     ROUTERS = []
+    before_filters = []
+    after_filters = []
 
     @classmethod
     def register(cls, router: Router):
         cls.ROUTERS.append(router)
 
+    @classmethod
+    def before_request(cls, fn):
+        cls.before_filters.append(fn)
+        return fn
+
+    @classmethod
+    def after_request(cls, fn):
+        cls.after_filters.append(fn)
+        return fn
+
     @wsgify
     def __call__(self, request: Request) -> Response:
+        for fn in self.before_filters:
+            request = fn(self, request)
         for router in self.ROUTERS:
             response = router.run(request)
             if response:
+                for fn in self.after_filters:
+                    response = fn(self, request, response)
                 return response
         raise exc.HTTPNotFound('not found')
 
@@ -169,6 +199,13 @@ def get_product(request: Request):
     print(request.vars.id)
     print(type(request.vars.id))
     return Response(body='product {}'.format(request.vars.id), content_type='text/plain')
+
+
+@Application.before_request
+def print_headers(app, request: Request):
+    for k in request.headers.keys():
+        print('{} => {}'.format(k, request.headers[k]))
+    return request
 
 
 Application.register(router=shop)
