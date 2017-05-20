@@ -1,5 +1,6 @@
 import re
-from webob import Request, Response
+from webob import Request as WebobRequest
+from webob import Response
 from webob import exc
 from webob.dec import wsgify
 
@@ -40,16 +41,17 @@ class _RouterContext(_Context):
     app_ctx = None
 
     def with_app(self, app_ctx):
-        self.app_ctx = app_ctx
+        self['app_ctx'] = app_ctx
 
     def __getattr__(self, item):
         if item in self.keys():
             return self[item]
-        return getattr(self.app_ctx, item)
+        if item in self.get('app_ctx', {}).keys():
+            return self['app_ctx'][item]
+        raise AttributeError('RouterContext has no attribute {}'.format(item))
 
     def __setattr__(self, key, value):
         self[key] = value
-
 
 
 class _Vars:
@@ -71,6 +73,12 @@ class _Vars:
         self.__dict__['_data'] = value
 
 
+class _Request(WebobRequest):
+    def __init__(self, environ):
+        super().__init__(environ)
+        self.vars = _Vars()
+
+
 class _Route:
     __slots__ = ['methods', 'pattern', 'translator', 'handler']
 
@@ -82,7 +90,7 @@ class _Route:
         self.methods = methods
         self.handler = handler
 
-    def run(self, prefix: str, ctx: _Context, request: Request):
+    def run(self, prefix: str, ctx: _Context, request: _Request):
         if self.methods:
             if isinstance(self.methods, (list, tuple, set)) and request.method not in self.methods:
                 return
@@ -93,7 +101,6 @@ class _Route:
             vs = {}
             for k, v in m.groupdict().items():
                 vs[k] = self.translator[k](v)
-                # request.params.add(k, vs[k])
             request.vars = _Vars(vs)
             return self.handler(ctx, request)
 
@@ -184,7 +191,7 @@ class _Router:
         self._after_filters.append(fn)
         return
 
-    def run(self, request: Request):
+    def run(self, request: _Request):
         if not request.path.startswith(self.prefix):
             return
         for fn in self._before_filters:
@@ -199,7 +206,7 @@ class _Router:
 
 class M:
     Router = _Router
-    Request = Request
+    Request = _Request
     Response = Response
 
     _routers = []
@@ -231,8 +238,8 @@ class M:
         cls._after_filters.append(fn)
         return fn
 
-    @wsgify
-    def __call__(self, request: Request) -> Response:
+    @wsgify(RequestClass=_Request)
+    def __call__(self, request: _Request) -> Response:
         for fn in self._before_filters:
             request = fn(self._ctx, request)
         for router in self._routers:
